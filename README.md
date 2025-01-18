@@ -1,0 +1,2 @@
+# django-nats
+NATS + Django = ⚡️
