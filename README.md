@@ -1,2 +1,2 @@
-# django-nats
+# django-nats-consumer
 NATS + Django = ⚡️
