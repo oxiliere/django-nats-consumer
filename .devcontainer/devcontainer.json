@@ -1,0 +1,29 @@
+{
+	"service": "nats_example",
+	"name": "Nats Example Consumers",
+	"dockerComposeFile": [
+		"docker-compose.yml"
+	],
+	"overrideCommand": true,
+	"workspaceFolder": "/app",
+	"forwardPorts": [
+		8000
+	],
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"editor.formatOnSave": true,
+				"[python]": {
+					"editor.defaultFormatter": "charliermarsh.ruff"
+				}
+			},
+			"extensions": [
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"batisteo.vscode-django",
+				"tamasfe.even-better-toml",
+				"charliermarsh.ruff"
+			]
+		}
+	}
+}

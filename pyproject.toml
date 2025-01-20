@@ -1,0 +1,113 @@
+[tool.poetry]
+name = "django-nats-consumer"
+version = "0.1.0"
+description = "Django NATS Consumer"
+license = "BSD-3-Clause"
+readme = "README.md"
+authors = []
+homepage = "https://github.com/dev360/django-nats-consumer"
+repository = "https://github.com/dev360/django-nats-consumer"
+packages = [{ include = "nats_consumer", from = "src" }]
+keywords = ["django", "nats", "jetstream", "consumer", "async"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Framework :: Django",
+]
+
+[tool.poetry.dependencies]
+python = ">=3.8"
+django = ">=4.1"
+nats-py = ">=2.9.0"
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.3"
+pytest-django = "^4.9"
+pytest-asyncio = "^0.21"
+tox = "^4.21"
+
+[tool.poetry.group.dev.dependencies]
+python-semantic-release = "^8.7"
+
+[tool.ruff]
+fix = true
+line-length = 120
+target-version = "py38"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+    "C",  # flake8-comprehensions
+    "B",  # flake8-bugbear
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501", # line too long, handled by black
+    "B905", # zip() without strict=True
+    "C901", # too complex
+]
+
+[tool.semantic_release]
+tag_format = "{version}"
+major_on_zero = true
+version_toml = ["pyproject.toml:tool.poetry.version"]
+
+[tool.semantic_release.changelog]
+template_dir = ".github/templates"
+exclude_commit_patterns = [
+    "chore: version bump",
+    "chore(deps)",
+    "chore(deps-dev)",
+]
+
+[tool.semantic_release.changelog.environment]
+trim_blocks = true
+lstrip_blocks = true
+
+[tool.semantic_release.publish]
+upload_to_vcs_release = false
+
+[tool.pytest.ini_options]
+addopts = """\
+    --strict-config
+    --strict-markers
+    --ds=example.settings
+    """
+pythonpath = "tests/server"
+django_find_project = false
+markers = ["asyncio: mark test as async/await test"]
+
+[tool.pytest-asyncio]
+asyncio_mode = "auto"
+
+[tool.tox]
+legacy_tox_ini = """
+    [tox]
+    isolated_build = true
+    envlist =
+        python{38,39,310,311,312,313}-django{32,41,42,50,51}
+
+    [testenv]
+    skip_install = true
+    allowlist_externals = poetry
+    set_env =
+        PYTHONDEVMODE = 1
+    commands_pre = poetry install
+    commands = poetry run python -m pytest tests/
+"""
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

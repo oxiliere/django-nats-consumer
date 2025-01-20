@@ -1,0 +1,42 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Nats Example: Send Messages",
+            "type": "debugpy",
+            "request": "launch",
+            "args": [
+                "publish_messages"
+            ],
+            "django": true,
+            "autoStartBrowser": false,
+            "program": "${workspaceFolder}/src/example/manage.py"
+        },
+        {
+            "name": "Nats Example: Run Consumer",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/src/example/manage.py",
+            "args": [
+                "nats_consumer",
+                "OrderConsumer",
+                "--create-stream"
+            ]
+        },
+        {
+            "name": "Ruff",
+            "type": "python",
+            "request": "launch",
+            "program": "-m",
+            "args": [
+                "ruff",
+                "check",
+                ".",
+                "--fix"
+            ]
+        }
+    ]
+}

@@ -1,0 +1,67 @@
+version: "3.8"
+
+services:
+  nats_example:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    container_name: nats_example
+    command: >
+      bash -c "
+        echo 'Waiting for services to be ready...' &&
+        sleep 5 &&
+        python src/example/manage.py migrate &&
+        python src/example/manage.py nats_consumer OrderConsumer --create-stream
+      "
+    depends_on:
+      nats:
+        condition: service_started
+    ports:
+      - "8000:8000"
+    networks:
+      - test-network
+    volumes:
+      - ..:/app
+      - ../src/nats_consumer:/usr/local/lib/python3.10/site-packages/nats_consumer
+    restart: "no"
+    dns_search: .
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  nats:
+    build:
+      context: ..
+      dockerfile: .devcontainer/nats.Dockerfile
+    container_name: nats
+    networks:
+      test-network:
+        aliases:
+          - nats
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    command: [
+      "--jetstream",
+      "--debug",
+      "--trace",
+      "--store_dir", "/data",
+      "--http_port", "8222",
+      "--addr", "0.0.0.0",
+      "--port", "4222"
+    ]
+    volumes:
+      - nats_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8222/healthz"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+      start_period: 5s
+    restart: unless-stopped
+
+networks:
+  test-network:
+    driver: bridge
+
+volumes:
+  nats_data: 
