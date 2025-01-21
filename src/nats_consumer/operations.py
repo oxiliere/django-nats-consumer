@@ -1,6 +1,5 @@
 import asyncio
-import nats
-from django.conf import settings
+
 from django.db.migrations import RunPython
 from nats.js.api import StreamConfig
 
@@ -85,7 +84,7 @@ class UpdateStream(StreamOperation):
             stream_info = nats_client.jetstream().stream_info(self.stream_name)
             config = stream_info.config
             for attr, value in self.config:
-                if has_attr(config, attr):
+                if hasattr(config, attr):
                     setattr(config, attr, value)
                 else:
                     raise AttributeError(f"{attr} does not exist on {config}.")

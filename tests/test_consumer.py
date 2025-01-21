@@ -1,8 +1,6 @@
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-from nats.aio.client import Client as NATS
-from nats.js.errors import NotFoundError
+import pytest
 
 from nats_consumer.consumer import get_nats_client, validate_stream_name
 

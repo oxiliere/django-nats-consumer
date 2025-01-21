@@ -21,7 +21,7 @@ class NatsConsumerConfig(AppConfig):
                     importlib.import_module(f"{app}.consumers")
                 except ModuleNotFoundError:
                     pass
-                except Exception as e:
+                except Exception:
                     pass
 
         # Also try to load the topmost consumers module
@@ -29,5 +29,5 @@ class NatsConsumerConfig(AppConfig):
             importlib.import_module("consumers")
         except ModuleNotFoundError:
             pass
-        except Exception as e:
+        except Exception:
             pass

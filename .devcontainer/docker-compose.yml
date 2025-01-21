@@ -64,4 +64,4 @@ networks:
     driver: bridge
 
 volumes:
-  nats_data: 
+  nats_data:

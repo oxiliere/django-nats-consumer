@@ -31,7 +31,7 @@ NATS_CONSUMER = {
 
 **{app_name}/consumers.py**
 ```python
-# Consumers need to be in the consumers module in order to be loaded, 
+# Consumers need to be in the consumers module in order to be loaded,
 # or you can import them to force them to be loaded.
 from nats_consumer import JetstreamPushConsumer
 
@@ -86,7 +86,7 @@ if __name__ == "__main__":
 
 **To run the consumer:**
 ```bash
-python manage.py nats_consumer OrderConsumer --create-stream 
+python manage.py nats_consumer OrderConsumer --create-stream
 ```
 
 ## Feature roadmap

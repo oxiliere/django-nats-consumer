@@ -1,14 +1,13 @@
-from typing import Callable, List, Optional, Dict, Any
 import asyncio
 import inspect
 import logging
 import os
-import signal
+from typing import Any, Dict, List, Optional
 
 import nats
 from nats.aio.client import Client as NATS
-from nats.js.errors import NotFoundError
 from nats.errors import TimeoutError
+from nats.js.errors import NotFoundError
 
 from nats_consumer import settings
 
@@ -144,7 +143,7 @@ class NatsConsumerBase(metaclass=ConsumerMeta):
             consumer_info = await js.consumer_info(self.stream_name, self.durable_name)
             logger.info(f"Retrieved consumer [{self.durable_name}]")
             logger.debug(consumer_info)
-        except NotFoundError as ex:
+        except NotFoundError:
             config = nats.js.api.ConsumerConfig(
                 deliver_policy=self.deliver_policy,
                 deliver_subject=self.deliver_subject,
@@ -160,8 +159,6 @@ class NatsConsumerBase(metaclass=ConsumerMeta):
             raise e
 
     async def start(self):
-        nats_client = await self.nats_client
-        js = nats_client.jetstream()
         await self._setup_consumers()
         await self.initialize()
         self._running = True

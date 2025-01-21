@@ -1,10 +1,8 @@
 import asyncio
-import logging
 import json
+import logging
 
 from django.core.management.base import BaseCommand
-from django.conf import settings
-
 
 from nats_consumer import get_nats_client
 
