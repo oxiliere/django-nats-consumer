@@ -22,10 +22,13 @@ INSTALLED_APPS = [
 ]
 
 NATS_CONSUMER = {
-    "nats_servers": ["nats://nats:4222"],
-    "connect_timeout": 10,  # seconds
-    "max_reconnect_attempts": 5,
-    "reconnect_time_wait": 1,  #
+    "connect_args": {
+        "servers": ["nats://localhost:4222"],
+        "allow_reconnect": True,
+        "max_reconnect_attempts": 5,
+        "reconnect_time_wait": 1,
+        "connect_timeout": 10,
+    },
 }
 ```
 

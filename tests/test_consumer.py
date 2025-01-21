@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from nats_consumer.consumer import get_nats_client, validate_stream_name
+from nats_consumer.consumer import validate_stream_name
 
 
 @pytest.fixture
@@ -30,8 +30,5 @@ class TestConsumerBase:
         with pytest.raises(ValueError):
             validate_stream_name("invalid.stream")
 
-    @pytest.mark.asyncio
-    async def test_get_nats_client(self, mock_nats_client):
-        client = await get_nats_client("nats://localhost:4222")
-        assert client.connect.called
-        assert client.is_connected
+    def test_consumer_meta(self):
+        pass
