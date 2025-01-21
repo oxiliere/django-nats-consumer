@@ -1,9 +1,23 @@
 import asyncio
+import logging
 
 from django.db.migrations import RunPython
-from nats.js.api import StreamConfig
+from nats.js import api
+from nats.js.errors import NotFoundError
 
-from .consumer import get_nats_client
+from .client import get_nats_client
+
+__all__ = [
+    "StreamOperation",
+    "CreateStream",
+    "DeleteStream",
+    "UpdateStream",
+    "CreateOrUpdateStream",
+    # This is just for ease of use:
+    "api",
+]
+
+logger = logging.getLogger(__name__)
 
 
 class StreamOperation(RunPython):
@@ -19,9 +33,8 @@ class CreateStream(StreamOperation):
     Helper to create a stream
     """
 
-    def __init__(self, stream_name, **kwargs):
-        self.stream_name = stream_name
-        self.config = {**kwargs}
+    def __init__(self, **kwargs):
+        self.config = api.StreamConfig(**kwargs)
         super().__init__()
 
     async def execute(self, nats_client=None):
@@ -31,8 +44,12 @@ class CreateStream(StreamOperation):
                 nats_client = await get_nats_client()
 
             js = nats_client.jetstream()
-            config = StreamConfig(name=self.stream_name, **self.config)
-            await js.add_stream(config)
+            try:
+                await js.stream_info(self.config.name)
+                logger.warning(f"Stream {self.config.name} already exists.")
+            except NotFoundError:
+                await js.add_stream(self.config)
+                logger.info(f"Stream {self.config.name} created.")
         finally:
             if created_client and nats_client:
                 await nats_client.drain()
@@ -55,8 +72,13 @@ class DeleteStream(StreamOperation):
                 nats_client = await get_nats_client()
                 created_client = True
 
-            # Logic to delete a JetStream stream
-            await nats_client.jetstream().delete_stream(name=self.stream_name)
+            js = nats_client.jetstream()
+            try:
+                await js.stream_info(self.stream_name)
+                await js.delete_stream(self.stream_name)
+                logger.info(f"Stream {self.stream_name} deleted.")
+            except NotFoundError:
+                logger.warning(f"Stream {self.stream_name} does not exist.")
         finally:
             if created_client and nats_client:
                 await nats_client.drain()
@@ -68,9 +90,8 @@ class UpdateStream(StreamOperation):
     Helper function to update a stream
     """
 
-    def __init__(self, stream_name, **kwargs):
-        self.stream_name = stream_name
-        self.config = dict(**kwargs)
+    def __init__(self, **kwargs):
+        self.config = api.StreamConfig(**kwargs)
         super().__init__()
 
     async def execute(self, nats_client=None):
@@ -80,17 +101,44 @@ class UpdateStream(StreamOperation):
                 nats_client = await get_nats_client()
                 created_client = True
 
-            # Fetch the current stream configuration
-            stream_info = nats_client.jetstream().stream_info(self.stream_name)
-            config = stream_info.config
-            for attr, value in self.config:
-                if hasattr(config, attr):
-                    setattr(config, attr, value)
-                else:
-                    raise AttributeError(f"{attr} does not exist on {config}.")
+            try:
+                js = nats_client.jetstream()
+                await js.stream_info(self.config.name)
+                await js.update_stream(self.config)
+            except NotFoundError:
+                logger.warning(f"Stream {self.config.name} does not exist.")
+                return
 
-            # Apply the updated configuration
-            await nats_client.jetstream().update_stream(config)
+        finally:
+            if created_client and nats_client:
+                await nats_client.drain()
+                await nats_client.close()
+
+
+class CreateOrUpdateStream(StreamOperation):
+    """
+    Helper function to create or update a stream
+    """
+
+    def __init__(self, **kwargs):
+        self.config = api.StreamConfig(**kwargs)
+        super().__init__()
+
+    async def execute(self, nats_client=None):
+        created_client = False
+        try:
+            if nats_client is None:
+                nats_client = await get_nats_client()
+                created_client = True
+
+            try:
+                js = nats_client.jetstream()
+                await js.stream_info(self.config.name)
+                await js.update_stream(self.config)
+                logger.info(f"Stream {self.config.name} updated.")
+            except NotFoundError:
+                await js.add_stream(self.config)
+                logger.info(f"Stream {self.config.name} created.")
 
         finally:
             if created_client and nats_client:
