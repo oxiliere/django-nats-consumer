@@ -1,10 +1,10 @@
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import AsyncMock, Mock, PropertyMock, patch
 from nats.js.api import StreamConfig, StreamInfo
 from nats.js.errors import NotFoundError
 
-from nats_consumer.operations import CreateStream, DeleteStream, UpdateStream, CreateOrUpdateStream
-
+from nats_consumer.operations import CreateOrUpdateStream, CreateStream, DeleteStream, UpdateStream
 
 # @pytest.fixture
 # def mock_js():
