@@ -55,7 +55,7 @@ class OrderConsumer(JetstreamPushConsumer):
     async def setup(self):
         return [
             operations.CreateStream(
-                self.stream_name,
+                name=self.stream_name,
                 subjects=self.subjects,
                 storage="file"
             ),

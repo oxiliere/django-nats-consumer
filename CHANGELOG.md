@@ -1,4 +1,3 @@
-
 ## 0.2.0 (2025-01-21)
 
 - feat(client): refactor nats client args ([`14e4879`](https://github.com/dev360/django-nats-consumer/commit/14e487983095773040204ea13a069d0638a0b573))

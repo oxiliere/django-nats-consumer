@@ -13,7 +13,11 @@ class OrderConsumer(JetstreamPushConsumer):
 
     async def setup(self):
         return [
-            operations.CreateStream(self.stream_name, subjects=self.subjects, storage="file"),
+            operations.CreateStream(
+                name=self.stream_name,
+                subjects=self.subjects,
+                storage="file",
+            ),
         ]
 
     async def handle_message(self, message):
