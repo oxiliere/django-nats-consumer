@@ -42,7 +42,7 @@ class CreateStream(StreamOperation):
         try:
             if nats_client is None:
                 nats_client = await get_nats_client()
-
+                created_client = True
             js = nats_client.jetstream()
             try:
                 await js.stream_info(self.config.name)
