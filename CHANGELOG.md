@@ -1,3 +1,8 @@
+
+## 0.3.0 (2025-01-22)
+
+- feat(operations): refactors CreateStream, UpdateStream, DeleteStream &amp; CreateOrUpdateStream operations and adds tests ([`991be99`](https://github.com/dev360/django-nats-consumer/commit/991be99a0043300a62463299287bd922b3b1b5c3))
+
 ## 0.2.0 (2025-01-21)
 
 - feat(client): refactor nats client args ([`14e4879`](https://github.com/dev360/django-nats-consumer/commit/14e487983095773040204ea13a069d0638a0b573))

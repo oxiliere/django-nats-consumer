@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "django-nats-consumer"
-version = "0.2.0"
+version = "0.3.0"
 description = "Django NATS Consumer"
 license = "BSD-3-Clause"
 readme = "README.md"
