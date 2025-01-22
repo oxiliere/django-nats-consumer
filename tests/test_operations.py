@@ -6,10 +6,6 @@ from nats.js.errors import NotFoundError
 
 from nats_consumer.operations import CreateOrUpdateStream, CreateStream, DeleteStream, UpdateStream
 
-# @pytest.fixture
-# def mock_js():
-#     # Create an AsyncMock for the JetStream context
-
 
 @pytest.fixture
 def mock_jetstream_instance():
@@ -77,7 +73,7 @@ async def test_create_stream_exists(mock_nats_client, mock_jetstream_instance):
     with patch("nats_consumer.operations.get_nats_client", return_value=mock_nats_client):
         await create_op.execute()
 
-    mock_nats_client.jetstream.called_once()
+    mock_nats_client.jetstream.assert_called_once()
 
     actual_stream_name = mock_jetstream_instance.stream_info.call_args[0][0]
     assert actual_stream_name == stream_name
@@ -87,19 +83,18 @@ async def test_create_stream_exists(mock_nats_client, mock_jetstream_instance):
     mock_nats_client.close.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_delete_stream(mock_nats_client):
-    # Arrange
+async def test_delete_stream(mock_nats_client, mock_jetstream_instance):
     stream_name = "test_stream"
     delete_op = DeleteStream(stream_name)
 
-    # Act
+    mock_jetstream_instance.stream_info.return_value = StreamInfo(stream_name, StreamConfig(name=stream_name))
+
     with patch("nats_consumer.operations.get_nats_client", return_value=mock_nats_client):
         await delete_op.execute()
 
-    # Assert
-    mock_nats_client.jetstream.assert_called_once()
-    mock_nats_client.jetstream.return_value.delete_stream.assert_called_once_with(stream_name)
+    mock_jetstream_instance.delete_stream.assert_awaited_once_with(stream_name)
+    mock_nats_client.drain.assert_awaited_once()
+    mock_nats_client.close.assert_awaited_once()
 
 
 @pytest.mark.asyncio
