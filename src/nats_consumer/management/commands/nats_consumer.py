@@ -24,13 +24,16 @@ class Command(BaseCommand):
         parser.add_argument("--create-stream", action="store_true", help="Setup the stream before running the consumer")
 
     def handle(self, *args, **options):
+        try:
+            asyncio.run(self._handle(*args, **options))
+        except KeyboardInterrupt:
+            logger.info("Consumer interrupted by user. Exiting...")
+
+    async def _handle(self, *args, **options):
         consumer_name = options["consumer"]
         Consumer = NatsConsumer.get(consumer_name)
 
-        try:
-            asyncio.run(self.run_consumer(Consumer, options))
-        except KeyboardInterrupt:
-            logger.info("Consumer interrupted by user. Exiting...")
+        await self.run_consumer(Consumer, options)
 
     async def run_consumer(self, Consumer, options):
         stream_exists = await Consumer.stream_exists()
