@@ -13,7 +13,7 @@ class Command(BaseCommand):
     help = "Run NATS Consumers"
 
     def add_arguments(self, parser):
-        parser.add_argument("consumer", type=str, help="Consumer name")
+        parser.add_argument("consumer", type=str, nargs="*", help="Consumer name")
         parser.add_argument(
             "--log-level",
             type=str,
@@ -21,20 +21,24 @@ class Command(BaseCommand):
             default="INFO",
             help="Log level: ERROR, WARNING, INFO, DEBUG",
         )
-        parser.add_argument("--create-stream", action="store_true", help="Setup the stream before running the consumer")
+        parser.add_argument("--setup", action="store_true", help="Setup the stream before running the consumer")
 
     def handle(self, *args, **options):
-        consumer_name = options["consumer"]
-        Consumer = NatsConsumer.get(consumer_name)
-
         try:
-            asyncio.run(self.run_consumer(Consumer, options))
+            asyncio.run(self._handle(*args, **options))
         except KeyboardInterrupt:
             logger.info("Consumer interrupted by user. Exiting...")
 
+    async def _handle(self, *args, **options):
+        consumer_names = options["consumer"]
+        if not consumer_names:
+            consumer_names = None
+
+        consumer_runs = [self.run_consumer(Consumer, options) for Consumer in NatsConsumer.filter(consumer_names)]
+        await asyncio.gather(*consumer_runs)
+
     async def run_consumer(self, Consumer, options):
-        stream_exists = await Consumer.stream_exists()
-        if not stream_exists and options["create_stream"]:
+        if options["setup"]:
             operations = await Consumer().setup()
             for op in operations:
                 await op.execute()
