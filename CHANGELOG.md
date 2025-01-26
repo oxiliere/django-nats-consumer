@@ -1,4 +1,9 @@
 
+## 1.2.0 (2025-01-26)
+
+- feat(consumer): implements more robust error retry//handling logic ([`717d236`](https://github.com/dev360/django-nats-consumer/commit/717d2362a9147bbe9f807f775a4622753f7b9921))
+- fix(consumer): fixes the message id function ([`53edd09`](https://github.com/dev360/django-nats-consumer/commit/53edd0980dd9c9699f76ec5b68d660513ee0bd88))
+
 ## 1.1.0 (2025-01-26)
 
 - feat(docs): improve the docs a little bit ([`aef2a81`](https://github.com/dev360/django-nats-consumer/commit/aef2a81818d40216c240e6cfd51b95aa839e53f7))
