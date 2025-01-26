@@ -3,12 +3,13 @@ NATS + Django = ⚡️
 
 ## Installation
 
-I'm not ready to publish this just yet, so you'll have to install it from source.
+Please pay attention to the development status; this is Pre-Alpha software; expect the api to evolve as I start using this more in production.
 
-This is alpha software, so expect bugs and breaking changes until I release it.
+I hope you find some value in it - writing a good consumer takes some finesse.
+
 
 ```bash
-pip install git+https://github.com/dev360/django-nats-consumer.git
+pip install django-nats-consumer
 ```
 
 
