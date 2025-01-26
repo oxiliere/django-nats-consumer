@@ -2,6 +2,7 @@ import asyncio
 import inspect
 import logging
 import os
+from enum import Enum
 from typing import List, Optional
 
 import nats
@@ -35,6 +36,12 @@ def validate_stream_name(stream_name):
     return stream_name
 
 
+class ErrorAckBehavior(Enum):
+    ACK = "Ack"
+    NAK = "Nak"
+    IMPLEMENTED_BY_HANDLE_ERROR = "ImplementedByHandleError"
+
+
 class ConsumerMeta(type):
     def __new__(cls, name, bases, attrs):
         new_cls = super().__new__(cls, name, bases, attrs)
@@ -56,12 +63,22 @@ class NatsConsumerBase(metaclass=ConsumerMeta):
     subjects: List[str]
     deliver_policy: nats.js.api.DeliverPolicy = nats.js.api.DeliverPolicy.ALL
 
+    # TODO: Add retry configuration with defaults
+    max_retries: int = 3
+    initial_retry_delay: float = 1.0  # seconds
+    max_retry_delay: float = 60.0  # seconds
+    backoff_factor: float = 2.0
+    handle_error_ack_behavior: ErrorAckBehavior = ErrorAckBehavior.NAK  # Default to Nak
+
     def __init__(self, nats_client: Optional[NATS] = None, **kwargs):
         self._nats_client = nats_client
         self._running = False
         self._stop_event = asyncio.Event()
-        self.message_success_count = 0
-        self.message_error_count = 0
+        self._retry_tasks = {}  # Track retry tasks by message ID
+        self._message_attempts = {}  # Track attempts by message GUID
+        self.total_success_count = 0
+        self.total_error_count = 0
+        self.subscriptions = []
 
     @classmethod
     def get_consumer(cls, name):
@@ -116,9 +133,6 @@ class NatsConsumerBase(metaclass=ConsumerMeta):
     async def initialize(self):
         pass
 
-    async def message_handler(self, msg):
-        raise NotImplementedError("message_handler")
-
     async def _setup_consumers(self):
         nats_client = await self.nats_client
         js = nats_client.jetstream()
@@ -149,6 +163,10 @@ class NatsConsumerBase(metaclass=ConsumerMeta):
     async def stop(self):
         if not self._stop_event.is_set():
             self._stop_event.set()
+            # Cancel all pending retry tasks
+            for task in self._retry_tasks.values():
+                task.cancel()
+            await asyncio.gather(*self._retry_tasks.values(), return_exceptions=True)
             nats_client = await self.nats_client
             if nats_client:
                 try:
@@ -160,46 +178,107 @@ class NatsConsumerBase(metaclass=ConsumerMeta):
                     logger.error(f"Error draining NATS client: {str(e)}")
             self._running = False
 
+    def _increment_attempt(self, msg):
+        guid = msg.metadata.stream_seq
+        self._message_attempts[guid] = self._message_attempts.get(guid, 0) + 1
+        return self._message_attempts[guid]
+
+    def _clear_message_tracking(self, msg):
+        guid = msg.metadata.stream_seq
+        self._message_attempts.pop(guid, None)
+        self._retry_tasks.pop(guid, None)
+
+    async def schedule_retry(self, msg, error: Exception):
+        attempt = self._increment_attempt(msg)
+
+        # Allow consumer to handle error if implemented
+        if attempt > self.max_retries:
+            if hasattr(self, "handle_error"):
+                await self.handle_error(msg, error, attempt)
+
+            # Determine acknowledgment behavior
+            if hasattr(self, "handle_error_ack_behavior"):
+                if self.handle_error_ack_behavior == ErrorAckBehavior.ACK:
+                    await msg.ack()
+                elif self.handle_error_ack_behavior == ErrorAckBehavior.NAK:
+                    await msg.nak()
+            else:
+                await msg.nak()
+
+            self.total_error_count += 1
+            self._clear_message_tracking(msg)
+            return
+
+        delay = min(self.initial_retry_delay * (self.backoff_factor ** (attempt - 1)), self.max_retry_delay)
+
+        logger.info(f"Scheduling retry {attempt} for message {msg.metadata.stream_seq} in {delay} seconds")
+
+        retry_task = asyncio.create_task(self._retry_message(msg, delay, attempt))
+        self._retry_tasks[msg.metadata.stream_seq] = retry_task
+
+        try:
+            await retry_task
+        except asyncio.CancelledError:
+            logger.info(f"Retry cancelled for message {msg.metadata.stream_seq}")
+        finally:
+            self._retry_tasks.pop(msg.metadata.stream_seq, None)
+
+    async def _retry_message(self, msg, delay, attempt):
+        await asyncio.sleep(delay)
+        try:
+            await self.handle_message(msg)
+            await msg.ack()
+            self.total_success_count += 1
+            self._clear_message_tracking(msg)
+        except Exception as e:
+            logger.error(f"Retry attempt {attempt} failed for message {msg.metadata.stream_seq}: {str(e)}")
+            await self.schedule_retry(msg, e)
+
     async def wrap_handle_message(self, msg):
         try:
             await self.handle_message(msg)
             await msg.ack()
-            self.message_success_count += 1
+            self.total_success_count += 1
+            self._clear_message_tracking(msg)
         except Exception as e:
-            await msg.nak()
-            self.message_error_count += 1
             logger.error(f"Error handling message: {str(e)}")
+            await self.schedule_retry(msg, e)
 
 
 class JetstreamPushConsumer(NatsConsumerBase):
+    async def setup_subscriptions(self, jetstream):
+        nats_client = await self.nats_client
+        js = nats_client.jetstream()
+        subscriptions = []
+        for subject in self.subjects:
+            sub = await js.subscribe(
+                subject=subject, durable=self.durable_name, stream=self.stream_name, cb=self.wrap_handle_message
+            )
+            subscriptions.append(sub)
+        self.subscriptions = subscriptions
+        await asyncio.Future()
+
+    async def unsubscribe(self):
+        for sub in self.subscriptions:
+            if sub:
+                await sub.unsubscribe()
+
     async def run(self, timeout: Optional[int] = None):
         await self.start()
-        sub = None
         try:
-            nats_client = await self.nats_client
-            js = nats_client.jetstream()
-            for subject in self.subjects:
-                sub = await js.subscribe(
-                    subject=subject, durable=self.durable_name, stream=self.stream_name, cb=self.wrap_handle_message
-                )
-            await asyncio.Future()
+            await self.setup_subscriptions()
         except Exception as e:
             logger.error(f"Error in consumer: {str(e)}")
         finally:
-            if sub:
-                await sub.unsubscribe()
+            await self.unsubscribe()
             await self.stop()
 
 
 class JetstreamPullConsumer(NatsConsumerBase):
-    def __init__(self, nats_client: Optional[NATS] = None, **kwargs):
-        super().__init__(nats_client, **kwargs)
-        self.subscriptions = []
-
     async def initialize(self):
-        await self.set_subscriptions()
+        await self.setup_subscriptions()
 
-    async def set_subscriptions(self):
+    async def setup_subscriptions(self):
         nats_client = await self.nats_client
         js = nats_client.jetstream()
         subscriptions = []

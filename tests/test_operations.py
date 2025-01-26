@@ -83,6 +83,7 @@ async def test_create_stream_exists(mock_nats_client, mock_jetstream_instance):
     mock_nats_client.close.assert_awaited_once()
 
 
+@pytest.mark.asyncio
 async def test_delete_stream(mock_nats_client, mock_jetstream_instance):
     stream_name = "test_stream"
     delete_op = DeleteStream(stream_name)
