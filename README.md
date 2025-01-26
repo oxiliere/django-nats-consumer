@@ -87,9 +87,20 @@ if __name__ == "__main__":
 
 ```
 
-**To run the consumer:**
+## Running Consumers
+**To run a single consumer:**
 ```bash
-python manage.py nats_consumer OrderConsumer --create-stream
+python manage.py nats_consumer OrderConsumer --setup
+```
+
+**To run multiple consumers:**
+```bash
+python manage.py nats_consumer OrderConsumer AnotherConsumer
+```
+
+**To run all consumers:**
+```bash
+python manage.py nats_consumer
 ```
 
 ## Feature roadmap

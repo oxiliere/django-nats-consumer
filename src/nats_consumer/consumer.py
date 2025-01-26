@@ -245,3 +245,9 @@ class NatsConsumer:
     @classmethod
     def get(cls, consumer_name):
         return CONSUMERS[consumer_name]
+
+    @classmethod
+    def filter(cls, consumer_names):
+        if not consumer_names:
+            return list(CONSUMERS.values())
+        return [cls.get(consumer_name) for consumer_name in consumer_names]

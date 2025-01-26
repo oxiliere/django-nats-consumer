@@ -19,8 +19,7 @@
             "program": "${workspaceFolder}/src/example/manage.py",
             "args": [
                 "nats_consumer",
-                "OrderConsumer",
-                "--create-stream"
+                "--setup"
             ]
         },
         {
