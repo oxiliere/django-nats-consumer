@@ -1,4 +1,8 @@
 
+## 1.1.0 (2025-01-26)
+
+- feat(docs): improve the docs a little bit ([`aef2a81`](https://github.com/dev360/django-nats-consumer/commit/aef2a81818d40216c240e6cfd51b95aa839e53f7))
+
 ## 1.0.0 (2025-01-26)
 
 
