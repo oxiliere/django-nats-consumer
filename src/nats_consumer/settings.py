@@ -24,5 +24,5 @@ def get_config(settings_name=None):
 
 
 config = get_config()
-
 connect_args = config.get("connect_args", {})
+default_durable_name = config.get("DEFAULT_DURABLE_NAME", "default")
