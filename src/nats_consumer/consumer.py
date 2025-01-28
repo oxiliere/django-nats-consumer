@@ -1,7 +1,6 @@
 import asyncio
 import inspect
 import logging
-import os
 from enum import Enum
 from typing import List, Optional
 
@@ -10,6 +9,7 @@ from nats.aio.client import Client as NATS
 from nats.errors import TimeoutError
 from nats.js.errors import NotFoundError
 
+from nats_consumer import settings
 from nats_consumer.client import get_nats_client
 
 logger = logging.getLogger(__name__)
@@ -98,19 +98,18 @@ class NatsConsumerBase(metaclass=ConsumerMeta):
     def consumer_name(self):
         return f"{self.__class__.__name__}"
 
-    @property
-    def durable_name(self):
-        return f"{self.consumer_name}-{self.hostname}"
-
-    @property
-    def hostname(self):
-        hostname = os.environ.get("HOSTNAME", "localhost")
-        hostname = hostname.replace(".", "-")
-        return hostname
+    def get_durable_name(self):
+        if getattr(self, "durable_name", None):
+            return self.durable_name
+        elif settings.default_durable_name:
+            return settings.default_durable_name
+        else:
+            return "default"
 
     @property
     def deliver_subject(self):
-        return f"{self.durable_name}.deliver"
+        durable_name = self.get_durable_name()
+        return f"{durable_name}.deliver"
 
     @property
     def is_connected(self):
@@ -133,9 +132,11 @@ class NatsConsumerBase(metaclass=ConsumerMeta):
     async def _setup_consumers(self):
         nats_client = await self.nats_client
         js = nats_client.jetstream()
+
+        durable_name = self.get_durable_name()
         try:
-            consumer_info = await js.consumer_info(self.stream_name, self.durable_name)
-            logger.info(f"Retrieved consumer [{self.durable_name}]")
+            consumer_info = await js.consumer_info(self.stream_name, durable_name)
+            logger.info(f"Retrieved consumer [{durable_name}]")
             logger.debug(consumer_info)
         except NotFoundError:
             config = nats.js.api.ConsumerConfig(
@@ -144,10 +145,10 @@ class NatsConsumerBase(metaclass=ConsumerMeta):
             )
             await js.add_consumer(
                 self.stream_name,
-                durable_name=self.durable_name,
+                durable_name=durable_name,
                 config=config,
             )
-            logger.info(f"Created consumer [{self.durable_name}]")
+            logger.info(f"Created consumer [{durable_name}]")
         except Exception as e:
             logger.error(f"Error creating consumer: {str(e)}")
             raise e
@@ -262,9 +263,10 @@ class JetstreamPushConsumer(NatsConsumerBase):
         nats_client = await self.nats_client
         js = nats_client.jetstream()
         subscriptions = []
+        durable_name = self.get_durable_name()
         for subject in self.subjects:
             sub = await js.subscribe(
-                subject=subject, durable=self.durable_name, stream=self.stream_name, cb=self.wrap_handle_message
+                subject=subject, durable=durable_name, stream=self.stream_name, cb=self.wrap_handle_message
             )
             subscriptions.append(sub)
         self.subscriptions = subscriptions
@@ -285,10 +287,11 @@ class JetstreamPullConsumer(NatsConsumerBase):
         nats_client = await self.nats_client
         js = nats_client.jetstream()
         subscriptions = []
+        durable_name = self.get_durable_name()
         for subject in self.subjects:
             sub = await js.pull_subscribe(
                 subject=subject,
-                durable=self.durable_name,
+                durable=durable_name,
                 stream=self.stream_name,
             )
             subscriptions.append(sub)

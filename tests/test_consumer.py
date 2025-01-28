@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import ANY, AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, Mock, patch
 
 import pytest
 
@@ -17,7 +17,8 @@ def mock_nats_client():
 
 @pytest.fixture
 def mock_jetstream():
-    return AsyncMock()
+    mock_jetstream = Mock(subscribe=AsyncMock(), consumer_info=AsyncMock())
+    return mock_jetstream
 
 
 class ErrorConsumer(JetstreamPushConsumer):
@@ -351,3 +352,15 @@ class TestConsumerBase:
         consumer.handle_error.assert_called_once_with(mock_msg, ANY, 2)
         mock_msg.ack.assert_not_called()
         mock_msg.nak.assert_not_called()
+
+
+class TestDurableName:
+    def test_get_durable_name_fallback(self, consumer):
+        # Test fallback to default durable name
+        assert consumer.get_durable_name() == "default"
+        assert consumer.deliver_subject == "default.deliver"
+
+        # Test using a custom durable name
+        consumer.durable_name = "custom_durable"
+        assert consumer.get_durable_name() == "custom_durable"
+        assert consumer.deliver_subject == "custom_durable.deliver"
