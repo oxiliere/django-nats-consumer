@@ -1,4 +1,8 @@
 
+## 1.2.1 (2025-01-28)
+
+- fix(consumer): durable_name is set to &#34;default&#34; unless set in settings, or specified on the consumer itself. ([`6bff3f6`](https://github.com/dev360/django-nats-consumer/commit/6bff3f6d1c4f7785e14697c4fb4694d2043e9734))
+
 ## 1.2.0 (2025-01-26)
 
 - feat(consumer): implements more robust error retry//handling logic ([`717d236`](https://github.com/dev360/django-nats-consumer/commit/717d2362a9147bbe9f807f775a4622753f7b9921))
