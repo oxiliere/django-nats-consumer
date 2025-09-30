@@ -315,7 +315,7 @@ class JetstreamPullConsumer(NatsConsumerBase):
                     except TimeoutError:
                         if not self.is_connected:
                             logger.warn(f"TimeoutError: {sub}")
-                            await self.set_subscriptions()
+                            await self.setup_subscriptions()
                         continue
                     except Exception as e:
                         logger.error(f"Error processing messages: {str(e)}")
