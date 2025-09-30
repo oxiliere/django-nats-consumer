@@ -130,29 +130,9 @@ class NatsConsumerBase(metaclass=ConsumerMeta):
         return self._nats_client
 
     async def _setup_consumers(self):
-        nats_client = await self.nats_client
-        js = nats_client.jetstream()
-
-        durable_name = self.get_durable_name()
-        try:
-            consumer_info = await js.consumer_info(self.stream_name, durable_name)
-            logger.info(f"Retrieved consumer [{durable_name}]")
-            logger.debug(consumer_info)
-        except NotFoundError:
-            config = nats.js.api.ConsumerConfig(
-                deliver_policy=self.deliver_policy,
-                deliver_subject=self.deliver_subject,
-            )
-            await js.add_consumer(
-                self.stream_name,
-                durable_name=durable_name,
-                config=config,
-            )
-            logger.info(f"Created consumer [{durable_name}]")
-        except Exception as e:
-            logger.error(f"Error creating consumer: {str(e)}")
-            raise e
-
+        # Subclasses must implement creation appropriate to mode
+        return
+    
     async def start(self):
         await self._setup_consumers()
         self._running = True
@@ -259,6 +239,27 @@ class NatsConsumerBase(metaclass=ConsumerMeta):
 
 
 class JetstreamPushConsumer(NatsConsumerBase):
+    async def _setup_consumers(self):
+        nats_client = await self.nats_client
+        js = nats_client.jetstream()
+        durable_name = self.get_durable_name()
+        try:
+            consumer_info = await js.consumer_info(self.stream_name, durable_name)
+            logger.info(f"Retrieved consumer [{durable_name}]")
+            logger.debug(consumer_info)
+        except NotFoundError:
+            config = nats.js.api.ConsumerConfig(
+                deliver_policy=self.deliver_policy,
+                deliver_subject=self.deliver_subject,
+                filter_subject=self.subjects[0],
+                ack_policy=nats.js.api.AckPolicy.EXPLICIT,
+            )
+            await js.add_consumer(self.stream_name, durable_name=durable_name, config=config)
+            logger.info(f"Created consumer [{durable_name}]")
+        except Exception as e:
+            logger.error(f"Error creating consumer: {str(e)}")
+            raise e
+        
     async def setup_subscriptions(self):
         nats_client = await self.nats_client
         js = nats_client.jetstream()
@@ -283,6 +284,26 @@ class JetstreamPushConsumer(NatsConsumerBase):
 
 
 class JetstreamPullConsumer(NatsConsumerBase):
+    async def _setup_consumers(self):
+        nats_client = await self.nats_client
+        js = nats_client.jetstream()
+        durable_name = self.get_durable_name()
+        try:
+            consumer_info = await js.consumer_info(self.stream_name, durable_name)
+            logger.info(f"Retrieved consumer [{durable_name}]")
+            logger.debug(consumer_info)
+        except NotFoundError:
+            config = nats.js.api.ConsumerConfig(
+                deliver_policy=self.deliver_policy,
+                filter_subject=self.subjects[0],
+                ack_policy=nats.js.api.AckPolicy.EXPLICIT,
+            )
+            await js.add_consumer(self.stream_name, durable_name=durable_name, config=config)
+            logger.info(f"Created consumer [{durable_name}]")
+        except Exception as e:
+            logger.error(f"Error creating consumer: {str(e)}")
+            raise e
+        
     async def setup_subscriptions(self):
         nats_client = await self.nats_client
         js = nats_client.jetstream()
