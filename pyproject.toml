@@ -99,7 +99,7 @@ ignore = [
 tag_format = "{version}"
 major_on_zero = true
 version_toml = ["pyproject.toml:project.version"]
-upload_to_vcs_release = true
+upload_to_vcs_release = false
 upload_to_pypi = false
 
 
