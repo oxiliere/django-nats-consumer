@@ -98,7 +98,18 @@ ignore = [
 [tool.semantic_release]
 tag_format = "{version}"
 major_on_zero = true
-version_toml = ["pyproject.toml:tool.poetry.version"]
+version_toml = ["pyproject.toml:project.version"]
+upload_to_vcs_release = true
+upload_to_pypi = false
+
+
+[tool.semantic_release.remote]
+type = "github"
+ignore_token_for_push = true
+
+[tool.semantic_release.remote.token]
+# Token pas nécessaire avec SSH
+env = "GITHUB_TOKEN_NOT_USED"
 
 [tool.semantic_release.changelog]
 template_dir = ".github/templates"
@@ -143,18 +154,3 @@ legacy_tox_ini = """
     commands_pre = poetry install
     commands = poetry run python -m pytest tests/
 """
-
-[tool.semantic_release]
-version_toml = ["pyproject.toml:project.version"]
-branch = "main"
-upload_to_vcs_release = true
-upload_to_pypi = false
-build_command = "echo 'No build command'"
-
-[tool.semantic_release.remote]
-type = "github"
-ignore_token_for_push = true
-
-[tool.semantic_release.remote.token]
-# Token pas nécessaire avec SSH
-env = "GITHUB_TOKEN_NOT_USED"
