@@ -1,6 +1,6 @@
 [project]
 name = "django-nats-consumer"
-version = "0.0.0"
+version = "1.0.0"
 description = "Django NATS Consumer"
 authors = []
 requires-python = ">=3.9"
