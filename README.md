@@ -13,7 +13,7 @@ A powerful Django integration for NATS JetStream with support for both Push and 
 - 📊 **Monitoring**: Built-in success/error counters and logging
 - ⚡ **Performance**: Optional uvloop support for better performance
 - 🔧 **Django Integration**: Seamless integration with Django management commands
-- 🧪 **Well Tested**: Comprehensive test suite with 56+ tests covering all features
+- 🧪 **Well Tested**: Comprehensive test suite covering all features
 - 🔒 **Production Ready**: Used in production environments with robust error handling
 
 ## What's New in This Fork
@@ -30,13 +30,14 @@ This fork adds significant enhancements to the original work:
 This library is in **Beta** status with comprehensive test coverage and production-ready features. The API is stable but may evolve based on community feedback.
 
 ```bash
-pip install django-nats-consumer
+# Install directly from GitHub
+pip install git+https://github.com/oxiliere/django-nats-consumer.git
 ```
 
 ### Optional Performance Enhancement
 ```bash
 # For better performance on Unix-like systems
-pip install django-nats-consumer[uvloop]
+pip install "git+https://github.com/oxiliere/django-nats-consumer.git[uvloop]"
 ```
 
 
@@ -88,28 +89,23 @@ class OrderHandler(ConsumerHandler):
 
     async def handle_created(self, message):
         """Handles orders.created messages"""
-        data = json.loads(message.data.decode())
-        logger.info(f"New order created: {data}")
+        logger.info(f"New order created: {message.data}")
 
     async def handle_updated(self, message):
         """Handles orders.updated messages"""
-        data = json.loads(message.data.decode())
-        logger.info(f"Order updated: {data}")
+        logger.info(f"Order updated: {message.data}")
 
     async def handle_cancelled(self, message):
         """Handles orders.cancelled messages"""
-        data = json.loads(message.data.decode())
         logger.info(f"Order cancelled: {data}")
 
     async def handle_shipped(self, message):
         """Handles orders.shipped messages"""
-        data = json.loads(message.data.decode())
-        logger.info(f"Order shipped: {data}")
+        logger.info(f"Order shipped: {message.data}")
 
     async def fallback_handle(self, msg, reason="unknown"):
         """Custom fallback for unhandled messages"""
-        data = json.loads(msg.data.decode())
-        logger.error(f"Unhandled message for {msg.subject} (reason: {reason}): {data}")
+        logger.error(f"Unhandled message for {msg.subject} (reason: {reason}): {message.data}")
         
         # Custom behavior: send to dead letter queue
         await self.send_to_dlq(msg, reason)
