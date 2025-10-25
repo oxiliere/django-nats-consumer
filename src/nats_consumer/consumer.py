@@ -11,6 +11,8 @@ from nats.js.errors import NotFoundError
 
 from nats_consumer import settings
 from nats_consumer.client import get_nats_client
+from nats_consumer.exceptions import DjangoNatsError
+
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,8 @@ class ConsumerMeta(type):
 class NatsConsumerBase(metaclass=ConsumerMeta):
     stream_name: str
     subjects: List[str]
+    filter_subject: Optional[str]
+    durable_name: Optional[str]
     deliver_policy: nats.js.api.DeliverPolicy = nats.js.api.DeliverPolicy.ALL
 
     # TODO: Add retry configuration with defaults
@@ -105,6 +109,23 @@ class NatsConsumerBase(metaclass=ConsumerMeta):
             return settings.default_durable_name
         else:
             return "default"
+
+    def get_filter_subject(self) -> str:
+        """
+        Get the filter subject for the consumer.
+        
+        Priority:
+        1. Explicit filter_subject property
+        2. First subject from subjects list (subjects[0])
+        3. Error if no subjects available
+        """
+        if getattr(self, 'filter_subject', None):
+            return self.filter_subject
+        elif len(self.subjects):
+            logger.info(f"No filter_subject specified, using subjects[0]: '{self.subjects[0]}'")
+            return self.subjects[0]
+        else:
+            raise DjangoNatsError("Unable to find the filter subject, please set the filter_subject property or provide subjects")
 
     @property
     def deliver_subject(self):
@@ -239,10 +260,7 @@ class NatsConsumerBase(metaclass=ConsumerMeta):
 
 
 class JetstreamPushConsumer(NatsConsumerBase):
-    async def _setup_consumers(self):
-        nats_client = await self.nats_client
-        js = nats_client.jetstream()
-        durable_name = self.get_durable_name()
+    async def _add_consumer(self, js, durable_name: str, deliver_subject: str, filter_subject: str):
         try:
             consumer_info = await js.consumer_info(self.stream_name, durable_name)
             logger.info(f"Retrieved consumer [{durable_name}]")
@@ -250,8 +268,8 @@ class JetstreamPushConsumer(NatsConsumerBase):
         except NotFoundError:
             config = nats.js.api.ConsumerConfig(
                 deliver_policy=self.deliver_policy,
-                deliver_subject=self.deliver_subject,
-                filter_subject=self.subjects[0],
+                deliver_subject=deliver_subject,
+                filter_subject=filter_subject,
                 ack_policy=nats.js.api.AckPolicy.EXPLICIT,
             )
             await js.add_consumer(self.stream_name, durable_name=durable_name, config=config)
@@ -259,18 +277,34 @@ class JetstreamPushConsumer(NatsConsumerBase):
         except Exception as e:
             logger.error(f"Error creating consumer: {str(e)}")
             raise e
-        
+
+    async def _unique_consumer(self, js):
+        durable_name = self.get_durable_name()
+
+        await self._add_consumer(
+            js=js, durable_name=durable_name,
+            deliver_subject=self.deliver_subject,
+            filter_subject=self.get_filter_subject()
+        )
+    
+    async def _setup_consumers(self):
+        nats_client = await self.nats_client
+        js = nats_client.jetstream()
+        await self._unique_consumer(js)
+
+    async def _unique_subscription(self, js):
+        durable_name = self.get_durable_name()
+        sub = await js.subscribe(
+            subject=self.deliver_subject, durable=durable_name, stream=self.stream_name, cb=self.wrap_handle_message
+        )
+
+        self.subscriptions = [sub]
+
     async def setup_subscriptions(self):
         nats_client = await self.nats_client
         js = nats_client.jetstream()
-        subscriptions = []
-        durable_name = self.get_durable_name()
-        for subject in self.subjects:
-            sub = await js.subscribe(
-                subject=subject, durable=durable_name, stream=self.stream_name, cb=self.wrap_handle_message
-            )
-            subscriptions.append(sub)
-        self.subscriptions = subscriptions
+        await self._unique_subscription(js)
+
         await asyncio.Future()
 
     async def run(self, timeout: Optional[int] = None):
@@ -284,10 +318,7 @@ class JetstreamPushConsumer(NatsConsumerBase):
 
 
 class JetstreamPullConsumer(NatsConsumerBase):
-    async def _setup_consumers(self):
-        nats_client = await self.nats_client
-        js = nats_client.jetstream()
-        durable_name = self.get_durable_name()
+    async def _add_consumer(self, js, durable_name: str, filter_subject: str):
         try:
             consumer_info = await js.consumer_info(self.stream_name, durable_name)
             logger.info(f"Retrieved consumer [{durable_name}]")
@@ -295,7 +326,7 @@ class JetstreamPullConsumer(NatsConsumerBase):
         except NotFoundError:
             config = nats.js.api.ConsumerConfig(
                 deliver_policy=self.deliver_policy,
-                filter_subject=self.subjects[0],
+                filter_subject=filter_subject,
                 ack_policy=nats.js.api.AckPolicy.EXPLICIT,
             )
             await js.add_consumer(self.stream_name, durable_name=durable_name, config=config)
@@ -303,21 +334,34 @@ class JetstreamPullConsumer(NatsConsumerBase):
         except Exception as e:
             logger.error(f"Error creating consumer: {str(e)}")
             raise e
+
+    async def _unique_consumer(self, js):
+        durable_name = self.get_durable_name()
+        await self._add_consumer(
+            js=js, 
+            durable_name=durable_name,
+            filter_subject=self.get_filter_subject()
+        )
+    
+    async def _setup_consumers(self):
+        nats_client = await self.nats_client
+        js = nats_client.jetstream()
+        await self._unique_consumer(js)
         
+    async def _unique_subscription(self, js):
+        durable_name = self.get_durable_name()
+        sub = await js.pull_subscribe(
+            subject="",  # Empty subject for pull subscription with filter
+            durable=durable_name,
+            stream=self.stream_name,
+        )
+        self.subscriptions = [sub]
+
     async def setup_subscriptions(self):
         nats_client = await self.nats_client
         js = nats_client.jetstream()
-        subscriptions = []
-        durable_name = self.get_durable_name()
-        for subject in self.subjects:
-            sub = await js.pull_subscribe(
-                subject=subject,
-                durable=durable_name,
-                stream=self.stream_name,
-            )
-            subscriptions.append(sub)
-        logger.info(f"Set subscriptions for {self.consumer_name}:")
-        self.subscriptions = subscriptions
+        await self._unique_subscription(js)
+        logger.info(f"Set subscriptions for {self.consumer_name}: {len(self.subscriptions)} subscription(s)")
 
     async def run(self, batch_size: int = 100, timeout: Optional[int] = None):
         await self.start()
