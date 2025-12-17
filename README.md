@@ -30,14 +30,14 @@ This fork adds significant enhancements to the original work:
 This library is in **Beta** status with comprehensive test coverage and production-ready features. The API is stable but may evolve based on community feedback.
 
 ```bash
-# Install directly from GitHub
-pip install git+https://github.com/oxiliere/django-nats-consumer.git
+# Install from PyPI
+pip install oxnats
 ```
 
 ### Optional Performance Enhancement
 ```bash
 # For better performance on Unix-like systems
-pip install "git+https://github.com/oxiliere/django-nats-consumer.git[uvloop]"
+pip install oxnats[uvloop]
 ```
 
 

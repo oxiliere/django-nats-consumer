@@ -1,5 +1,5 @@
 [project]
-name = "django-nats-consumer"
+name = "oxnats"
 version = "1.0.0"
 description = "Django NATS Consumer"
 authors = []
@@ -59,7 +59,7 @@ default-groups = [
 ]
 
 [tool.uv.sources]
-django-nats-consumer = { workspace = true }
+oxnats = { workspace = true }
 
 [tool.hatch.build.targets.sdist]
 include = ["src/nats_consumer"]
