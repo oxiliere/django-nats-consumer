@@ -84,54 +84,6 @@ wheels = [
 ]
 
 [[package]]
-name = "django-nats-consumer"
-version = "0.0.0"
-source = { editable = "." }
-dependencies = [
-    { name = "django" },
-    { name = "nats-py" },
-]
-
-[package.optional-dependencies]
-dev = [
-    { name = "watchfiles" },
-]
-uvloop = [
-    { name = "uvloop" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "watchfiles" },
-]
-test = [
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-django" },
-    { name = "tox" },
-    { name = "uvloop" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "django", specifier = ">=4.1" },
-    { name = "nats-py", specifier = ">=2.9.0" },
-    { name = "uvloop", marker = "extra == 'uvloop'", specifier = ">=0.21.0" },
-    { name = "watchfiles", marker = "extra == 'dev'", specifier = ">=1.0.4" },
-]
-provides-extras = ["uvloop", "dev"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "watchfiles", specifier = ">=1.0.4,<2" }]
-test = [
-    { name = "pytest", specifier = "~=8.3" },
-    { name = "pytest-asyncio", specifier = ">=0.21,<0.22" },
-    { name = "pytest-django", specifier = "~=4.9" },
-    { name = "tox", specifier = "~=4.21" },
-    { name = "uvloop", specifier = ">=0.21.0" },
-]
-
-[[package]]
 name = "exceptiongroup"
 version = "1.2.2"
 source = { registry = "https://pypi.org/simple" }
@@ -172,6 +124,52 @@ name = "nats-py"
 version = "2.9.0"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ba/dc/9a01dd9561b736622c0aa3a19f6b40f3eeb22051eaea1475ceb81d5da48d/nats_py-2.9.0.tar.gz", hash = "sha256:01886eb9e0a87f0ec630652cf1fae65d2a8556378a609bc6cc07d2ea60c8d0dd", size = 110714, upload-time = "2024-08-26T15:14:17.337Z" }
+
+[[package]]
+name = "oxnats"
+version = "2.0.0"
+source = { editable = "." }
+dependencies = [
+    { name = "django" },
+    { name = "nats-py" },
+]
+
+[package.optional-dependencies]
+dev = [
+    { name = "watchfiles", marker = "python_full_version < '3.14'" },
+]
+uvloop = [
+    { name = "uvloop" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "watchfiles", marker = "python_full_version < '3.14'" },
+]
+test = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-django" },
+    { name = "tox" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "django", specifier = ">=4.1" },
+    { name = "nats-py", specifier = ">=2.9.0" },
+    { name = "uvloop", marker = "extra == 'uvloop'", specifier = ">=0.21.0" },
+    { name = "watchfiles", marker = "python_full_version < '3.14' and extra == 'dev'", specifier = ">=1.0.4" },
+]
+provides-extras = ["uvloop", "dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "watchfiles", marker = "python_full_version < '3.14'", specifier = ">=1.0.4,<2" }]
+test = [
+    { name = "pytest", specifier = "~=8.3" },
+    { name = "pytest-asyncio", specifier = ">=0.21,<0.22" },
+    { name = "pytest-django", specifier = "~=4.9" },
+    { name = "tox", specifier = "~=4.21" },
+]
 
 [[package]]
 name = "packaging"

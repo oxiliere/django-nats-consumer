@@ -1,97 +1,110 @@
 import logging
-from typing import List, Optional
+from typing import List, Optional, Callable, Union
+from functools import wraps
 from nats.aio.msg import Msg
 
 logger = logging.getLogger(__name__)
 
 
+def handle(*subjects: str):
+    """
+    Decorator to register a handler method for one or more NATS subjects.
+    
+    Usage:
+        class MyHandler(ConsumerHandler):
+            @handle('orders.created')
+            async def on_order_created(self, msg: Msg):
+                # Handle order created
+                pass
+            
+            @handle('orders.updated', 'orders.modified')
+            async def on_order_changed(self, msg: Msg):
+                # Handle order updates
+                pass
+            
+            @handle('orders.*')  # Wildcard support
+            async def on_any_order(self, msg: Msg):
+                # Handle any order event
+                pass
+    
+    Args:
+        *subjects: One or more subject patterns to handle
+    
+    Returns:
+        Decorated handler method with _nats_subjects attribute
+    """
+    def decorator(func: Callable) -> Callable:
+        # Store subjects on the function for later registration
+        func._nats_subjects = subjects
+        return func
+    return decorator
+
+
 class ConsumerHandler:
     """
-    Base handler class that routes messages to specific handler methods based on subject names.
+    Base handler class that routes messages to handler methods using @handle decorator.
     
-    Supports multiple subject formats:
-        - Dot notation: 'orders.created' -> handle_created()
-        - Hyphen notation: 'orders-created' -> handle_created()
-        - Underscore notation: 'orders_created' -> handle_created()
-        - Single token: 'orders' -> handle_orders()
-        - Multi-level: 'orders.old.deleted' -> handle_old_deleted()
+    New decorator-based approach:
+        class MyHandler(ConsumerHandler):
+            @handle('orders.created')
+            async def on_order_created(self, msg: Msg):
+                data = json.loads(msg.data.decode())
+                # Process order creation
+            
+            @handle('orders.updated', 'orders.modified')
+            async def on_order_changed(self, msg: Msg):
+                # Handle multiple subjects with one method
+                pass
+            
+            @handle('orders.*')  # Wildcard support
+            async def on_any_order(self, msg: Msg):
+                # Catch-all for order events
+                pass
     
-    Example:
-        subjects = ['orders.created', 'orders-deleted', 'orders_updated', 'payments']
-        
-        The handler will automatically route:
-        - 'orders.created' -> handle_created()
-        - 'orders-deleted' -> handle_deleted()
-        - 'orders_updated' -> handle_updated()
-        - 'payments' -> handle_payments()
-    
-    Note: Wildcard subjects (* and >) are currently ignored.
+    Benefits:
+        - Explicit: Clear which methods handle which subjects
+        - Flexible: One method can handle multiple subjects
+        - Wildcards: Full support for * and > patterns
+        - No naming conventions: Method names can be anything
     """
 
-    def __init__(self, subjects: List[str]):
-        self.subjects = subjects
+    def __init__(self):
         self._handler_map = self._build_handler_map()
+        self.subjects = list(self._handler_map.keys())
 
     def _build_handler_map(self) -> dict:
         """
-        Build a mapping from subjects to handler method names.
+        Build a mapping from subjects to handler methods by scanning for @handle decorators.
         
-        RECOMMENDED PRACTICE:
-        - Use dots (.) in subjects: 'orders.created', 'users.profile.updated'
-        - Use wildcards (*) in filters: 'orders.*', 'users.profile.*'
-        - Avoid hyphens (-) and underscores (_) in subjects for consistency
-        
-        Supported formats (for backward compatibility):
-        - 'orders.created' -> 'handle_created' ✅ RECOMMENDED
-        - 'orders-created' -> 'handle_created' ⚠️ LEGACY
-        - 'orders_created' -> 'handle_created' ⚠️ LEGACY
-        - 'orders' -> 'handle_orders'
-        - 'orders.old.deleted' -> 'handle_old_deleted'
+        Returns:
+            dict: Mapping of subject -> handler method
         """
         handler_map = {}
-        method_collisions = {}  # Track potential collisions
         
-        for subject in self.subjects:
-            # Skip wildcard subjects for now
-            if '*' in subject or '>' in subject:
+        # Scan all methods in the class for @handle decorator
+        for attr_name in dir(self):
+            if attr_name.startswith('_'):
                 continue
                 
-            # Normalize separators: convert dots and hyphens to underscores
-            normalized = subject.replace('.', '_').replace('-', '_')
+            attr = getattr(self, attr_name)
             
-            # Split by underscores to get parts
-            parts = normalized.split('_')
-            
-            if len(parts) >= 2:
-                # Multi-part subject: take everything after the first part (domain)
-                # e.g., 'orders_created' -> 'handle_created'
-                # e.g., 'orders_old_deleted' -> 'handle_old_deleted'
-                handler_parts = parts[1:]
-                handler_name = f"handle_{'_'.join(handler_parts)}"
-            else:
-                # Single-part subject
-                # e.g., 'orders' -> 'handle_orders'
-                handler_name = f"handle_{parts[0]}"
-            
-            # Check for collisions
-            if handler_name in method_collisions:
-                existing_subject = method_collisions[handler_name]
-                logger.warning(
-                    f"Handler method collision detected: '{subject}' and '{existing_subject}' "
-                    f"both map to '{handler_name}()'. Consider using dot notation for subjects "
-                    f"(e.g., 'orders.created' instead of 'orders-created')."
-                )
-            else:
-                method_collisions[handler_name] = subject
-                
-            handler_map[subject] = handler_name
+            # Check if method has _nats_subjects attribute (set by @handle decorator)
+            if hasattr(attr, '_nats_subjects'):
+                subjects = attr._nats_subjects
+                for subject in subjects:
+                    if subject in handler_map:
+                        existing_method = handler_map[subject].__name__
+                        logger.warning(
+                            f"Subject '{subject}' is already handled by {existing_method}(). "
+                            f"Overriding with {attr_name}()."
+                        )
+                    handler_map[subject] = attr
+                    logger.debug(f"Registered handler: {subject} -> {attr_name}()")
         
-        # Log recommendations for non-dot subjects
-        non_dot_subjects = [s for s in self.subjects if '.' not in s and ('*' not in s and '>' not in s)]
-        if non_dot_subjects:
-            logger.info(
-                f"RECOMMENDATION: Consider using dot notation for subjects: {non_dot_subjects}. "
-                f"Example: 'orders.created' instead of 'orders-created' or 'orders_created'"
+        if not handler_map:
+            logger.warning(
+                f"{self.__class__.__name__} has no handlers registered. "
+                f"Use @handle decorator to register handler methods."
             )
                 
         return handler_map
@@ -99,59 +112,101 @@ class ConsumerHandler:
     async def handle(self, msg: Msg):
         """
         Route the message to the appropriate handler method based on its subject.
-        Falls back to fallback_handle if no specific handler is found.
+        Supports exact matches and wildcard patterns (* and >).
+        Falls back to fallback_handle if no handler is found.
         """
         subject = msg.subject
+        handler_method = None
         
-        if subject not in self.subjects:
-            logger.warning(f"Received message for unhandled subject: {subject}")
-            await self.fallback_handle(msg, reason="unhandled_subject")
+        # Try exact match first
+        if subject in self._handler_map:
+            handler_method = self._handler_map[subject]
+        else:
+            # Try wildcard matching
+            handler_method = self._match_wildcard(subject)
+        
+        if handler_method is None:
+            logger.warning(f"No handler found for subject: {subject}")
+            await self.fallback_handle(msg, reason="no_handler")
             return
-            
-        handler_name = self._handler_map.get(subject)
-        if not handler_name:
-            logger.warning(f"No handler mapping found for subject: {subject}")
-            await self.fallback_handle(msg, reason="no_mapping")
-            return
-            
-        if not hasattr(self, handler_name):
-            logger.error(f"Handler method '{handler_name}' not implemented for subject '{subject}'")
-            await self.fallback_handle(msg, reason="not_implemented")
-            return
-            
-        handler_method = getattr(self, handler_name)
+        
         try:
             await handler_method(msg)
         except Exception as e:
-            logger.error(f"Error in handler '{handler_name}' for subject '{subject}': {str(e)}")
+            logger.error(f"Error in handler '{handler_method.__name__}' for subject '{subject}': {str(e)}")
             raise
+    
+    def _match_wildcard(self, subject: str) -> Optional[Callable]:
+        """
+        Match subject against wildcard patterns in handler map.
+        
+        Supports:
+            - '*' matches one token: 'orders.*' matches 'orders.created'
+            - '>' matches one or more tokens: 'orders.>' matches 'orders.created.v1'
+        
+        Args:
+            subject: The subject to match
+        
+        Returns:
+            Handler method if match found, None otherwise
+        """
+        subject_parts = subject.split('.')
+        
+        for pattern, handler in self._handler_map.items():
+            if '*' not in pattern and '>' not in pattern:
+                continue
+            
+            pattern_parts = pattern.split('.')
+            
+            # Handle '>' wildcard (matches rest of subject)
+            if '>' in pattern_parts:
+                gt_index = pattern_parts.index('>')
+                # '>' must be last token
+                if gt_index != len(pattern_parts) - 1:
+                    logger.warning(f"Invalid pattern '{pattern}': '>' must be the last token")
+                    continue
+                
+                # Check if prefix matches
+                if len(subject_parts) >= gt_index:
+                    if subject_parts[:gt_index] == pattern_parts[:gt_index]:
+                        return handler
+            
+            # Handle '*' wildcard (matches exactly one token)
+            elif '*' in pattern_parts:
+                if len(subject_parts) != len(pattern_parts):
+                    continue
+                
+                match = True
+                for i, (s_part, p_part) in enumerate(zip(subject_parts, pattern_parts)):
+                    if p_part != '*' and s_part != p_part:
+                        match = False
+                        break
+                
+                if match:
+                    return handler
+        
+        return None
 
     def get_handler_methods(self) -> List[str]:
-        """Return a list of expected handler method names for debugging."""
-        return list(self._handler_map.values())
-
-    def validate_handlers(self) -> List[str]:
-        """
-        Validate that all required handler methods are implemented.
-        Returns a list of missing handler methods.
-        """
-        missing_handlers = []
-        for subject, handler_name in self._handler_map.items():
-            if not hasattr(self, handler_name) or not callable(getattr(self, handler_name)):
-                missing_handlers.append(handler_name)
-        return missing_handlers
+        """Return a list of registered handler method names for debugging."""
+        return [method.__name__ for method in self._handler_map.values()]
+    
+    def get_subjects(self) -> List[str]:
+        """Return a list of all registered subjects."""
+        return list(self._handler_map.keys())
 
     async def fallback_handle(self, msg: Msg, reason: str = "unknown"):
         """
         Fallback handler for messages that cannot be routed to specific handlers.
         
-        Default behavior: NAK the message to trigger redelivery.
+        Default behavior: NAK the message to trigger native NATS redelivery.
         
         REASONING FOR NAK (default):
         - 🔄 **Redelivery**: Allows fixing handler implementation and reprocessing
         - 🛡️ **Safety**: Prevents message loss during development/deployment
         - 🐛 **Debugging**: Keeps problematic messages in the stream for analysis
         - ⚠️ **Alerting**: Repeated NAKs can trigger monitoring alerts
+        - ⏱️ **Native backoff**: Uses NATS JetStream backoff configuration
         
         Override this method to implement custom fallback behavior:
         - ACK: To discard unhandled messages (data loss risk)
@@ -166,9 +221,11 @@ class ConsumerHandler:
         """
         logger.warning(
             f"Fallback handler triggered for subject '{msg.subject}' (reason: {reason}). "
-            f"NAKing message to trigger redelivery. Override fallback_handle() for custom behavior."
+            f"NAKing message to trigger native NATS redelivery with backoff. "
+            f"Override fallback_handle() for custom behavior."
         )
         
-        # Default behavior: NAK to trigger redelivery
+        # Default behavior: NAK without delay to use native NATS backoff
+        # This allows the consumer's backoff configuration to control redelivery timing
         # This is safer than ACK as it prevents message loss
         await msg.nak()

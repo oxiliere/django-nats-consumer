@@ -3,76 +3,69 @@ import json
 from unittest.mock import Mock, AsyncMock, patch
 from nats.aio.msg import Msg
 from nats_consumer.consumer import JetstreamPushConsumer, JetstreamPullConsumer
-from nats_consumer.handler import ConsumerHandler
+from nats_consumer import ConsumerHandler, handle
 
 
-class TestIntegrationHandler(ConsumerHandler):
-    """Test handler for integration tests"""
+class IntegrationTestHandler(ConsumerHandler):
+    """Handler for integration tests using @handle decorator"""
     
-    def __init__(self, subjects=None):
-        if subjects is None:
-            subjects = [
-                "integration.created",
-                "integration-updated",
-                "integration_deleted"
-            ]
-        super().__init__(subjects)
-        
-        # Track calls for testing
+    def __init__(self):
         self.calls = []
+        super().__init__()
     
-    async def handle_created(self, msg):
+    @handle('integration.created')
+    async def on_created(self, msg):
         data = json.loads(msg.data.decode())
         self.calls.append(("created", data))
     
-    async def handle_updated(self, msg):
+    @handle('integration.updated', 'integration-updated')
+    async def on_updated(self, msg):
         data = json.loads(msg.data.decode())
         self.calls.append(("updated", data))
     
-    async def handle_deleted(self, msg):
+    @handle('integration.deleted', 'integration_deleted')
+    async def on_deleted(self, msg):
         data = json.loads(msg.data.decode())
         self.calls.append(("deleted", data))
 
 
-@patch('nats_consumer.consumer.get_nats_client')
-class TestPushConsumerWithHandler(JetstreamPushConsumer):
-    """Test Push consumer with handler"""
+class PushConsumerWithHandler(JetstreamPushConsumer):
+    """Push consumer with handler for testing"""
     stream_name = "test_push_integration"
     subjects = ["integration.created", "integration-updated", "integration_deleted"]
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.handler = TestIntegrationHandler()
+        self.handler = IntegrationTestHandler()
     
     async def handle_message(self, message):
         await self.handler.handle(message)
 
 
-@patch('nats_consumer.consumer.get_nats_client')
-class TestPullConsumerWithHandler(JetstreamPullConsumer):
-    """Test Pull consumer with handler"""
+class PullConsumerWithHandler(JetstreamPullConsumer):
+    """Pull consumer with handler for testing"""
     stream_name = "test_pull_integration"
     subjects = ["integration.created", "integration-updated", "integration_deleted"]
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.handler = TestIntegrationHandler()
+        self.handler = IntegrationTestHandler()
     
     async def handle_message(self, message):
         await self.handler.handle(message)
 
 
 @pytest.fixture
-def integration_handler(integration_subjects):
+def integration_handler():
     """Create an integration handler instance"""
-    return TestIntegrationHandler(integration_subjects)
+    return IntegrationTestHandler()
 
 
 @pytest.fixture
 def push_consumer_with_handler(mock_django_settings, mock_nats_client):
     """Create a push consumer with handler for testing"""
     with patch('nats_consumer.consumer.NatsConsumerBase.__init__', return_value=None):
-        consumer = TestPushConsumerWithHandler()
+        consumer = PushConsumerWithHandler()
         consumer._nats_client = mock_nats_client
         consumer._running = False
         consumer._stop_event = AsyncMock()
@@ -86,7 +79,7 @@ def push_consumer_with_handler(mock_django_settings, mock_nats_client):
 def pull_consumer_with_handler(mock_django_settings, mock_nats_client):
     """Create a pull consumer with handler for testing"""
     with patch('nats_consumer.consumer.NatsConsumerBase.__init__', return_value=None):
-        consumer = TestPullConsumerWithHandler()
+        consumer = PullConsumerWithHandler()
         consumer._nats_client = mock_nats_client
         consumer._running = False
         consumer._stop_event = AsyncMock()
@@ -181,10 +174,8 @@ class TestConsumerIntegration:
     async def test_handler_error_propagation(self, mock_message, mock_django_settings, mock_nats_client):
         """Test that handler errors are properly propagated"""
         class ErrorHandler(ConsumerHandler):
-            def __init__(self):
-                super().__init__(["test.error"])
-            
-            async def handle_error(self, msg):
+            @handle('test.error')
+            async def on_error(self, msg):
                 raise ValueError("Handler error")
         
         with patch('nats_consumer.consumer.NatsConsumerBase.__init__', return_value=None):
@@ -231,17 +222,23 @@ class TestConsumerIntegration:
     
     def test_handler_mapping_consistency(self, push_consumer_with_handler, pull_consumer_with_handler):
         """Test that handler mapping is consistent across consumer types"""
-        # Both should have same handler mapping
-        assert push_consumer_with_handler.handler._handler_map == pull_consumer_with_handler.handler._handler_map
+        # Both should have same subjects registered
+        push_subjects = set(push_consumer_with_handler.handler.get_subjects())
+        pull_subjects = set(pull_consumer_with_handler.handler.get_subjects())
         
-        expected_mapping = {
-            "integration.created": "handle_created",
-            "integration-updated": "handle_updated", 
-            "integration_deleted": "handle_deleted"
+        assert push_subjects == pull_subjects
+        
+        # Check expected subjects are registered
+        expected_subjects = {
+            "integration.created",
+            "integration.updated",
+            "integration-updated", 
+            "integration.deleted",
+            "integration_deleted"
         }
         
-        assert push_consumer_with_handler.handler._handler_map == expected_mapping
-        assert pull_consumer_with_handler.handler._handler_map == expected_mapping
+        assert expected_subjects.issubset(push_subjects)
+        assert expected_subjects.issubset(pull_subjects)
     
     def test_consumer_type_differences(self, push_consumer_with_handler, pull_consumer_with_handler):
         """Test that consumers have different configurations as expected"""
@@ -249,8 +246,8 @@ class TestConsumerIntegration:
         assert push_consumer_with_handler.stream_name != pull_consumer_with_handler.stream_name
         
         # Different consumer types
-        assert type(push_consumer_with_handler).__name__ == "TestPushConsumerWithHandler"
-        assert type(pull_consumer_with_handler).__name__ == "TestPullConsumerWithHandler"
+        assert type(push_consumer_with_handler).__name__ == "PushConsumerWithHandler"
+        assert type(pull_consumer_with_handler).__name__ == "PullConsumerWithHandler"
         
         # Same subjects
         assert push_consumer_with_handler.subjects == pull_consumer_with_handler.subjects

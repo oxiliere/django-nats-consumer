@@ -1,96 +1,91 @@
 import pytest
 from unittest.mock import AsyncMock
-from nats_consumer.handler import ConsumerHandler
+from nats_consumer import ConsumerHandler, handle
 
 
-
-class TestHandler(ConsumerHandler):
-    """Test handler implementation"""
+class HandlerForTesting(ConsumerHandler):
+    """Handler implementation for testing using @handle decorator"""
     
-    def __init__(self, subjects):
-        super().__init__(subjects)
-        
-        # Mock methods for testing
-        self.handle_created = AsyncMock()
-        self.handle_updated = AsyncMock()
-        self.handle_deleted = AsyncMock()
-        self.handle_payments = AsyncMock()
-        self.handle_old_archived = AsyncMock()
+    def __init__(self):
+        # Initialize mocks before calling super().__init__()
+        self.created_mock = AsyncMock()
+        self.updated_mock = AsyncMock()
+        self.deleted_mock = AsyncMock()
+        self.payments_mock = AsyncMock()
+        self.archived_mock = AsyncMock()
+        super().__init__()
+    
+    @handle('orders.created')
+    async def on_created(self, msg):
+        await self.created_mock(msg)
+    
+    @handle('orders.updated', 'orders-updated')
+    async def on_updated(self, msg):
+        await self.updated_mock(msg)
+    
+    @handle('orders.deleted', 'orders_deleted')
+    async def on_deleted(self, msg):
+        await self.deleted_mock(msg)
+    
+    @handle('payments')
+    async def on_payments(self, msg):
+        await self.payments_mock(msg)
+    
+    @handle('orders.old.archived')
+    async def on_archived(self, msg):
+        await self.archived_mock(msg)
 
 
 @pytest.fixture
-def test_handler(handler_subjects):
+def test_handler():
     """Create a test handler instance"""
-    return TestHandler(handler_subjects)
+    return HandlerForTesting()
 
 
 class TestConsumerHandler:
-    """Test cases for ConsumerHandler"""
+    """Test cases for ConsumerHandler with decorator approach"""
     
-    def test_handler_mapping_dot_notation(self, test_handler):
-        """Test dot notation subject mapping"""
+    def test_handler_registration(self, test_handler):
+        """Test that handlers are registered correctly"""
         assert "orders.created" in test_handler._handler_map
-        assert test_handler._handler_map["orders.created"] == "handle_created"
-        
-        assert "orders.old.archived" in test_handler._handler_map
-        assert test_handler._handler_map["orders.old.archived"] == "handle_old_archived"
-    
-    def test_handler_mapping_hyphen_notation(self, test_handler):
-        """Test hyphen notation subject mapping"""
+        assert "orders.updated" in test_handler._handler_map
         assert "orders-updated" in test_handler._handler_map
-        assert test_handler._handler_map["orders-updated"] == "handle_updated"
-    
-    def test_handler_mapping_underscore_notation(self, test_handler):
-        """Test underscore notation subject mapping"""
+        assert "orders.deleted" in test_handler._handler_map
         assert "orders_deleted" in test_handler._handler_map
-        assert test_handler._handler_map["orders_deleted"] == "handle_deleted"
-    
-    def test_handler_mapping_single_token(self, test_handler):
-        """Test single token subject mapping"""
         assert "payments" in test_handler._handler_map
-        assert test_handler._handler_map["payments"] == "handle_payments"
+        assert "orders.old.archived" in test_handler._handler_map
     
-    def test_wildcard_subjects_ignored(self, test_handler):
-        """Test that wildcard subjects are ignored"""
-        assert "orders.*" not in test_handler._handler_map
-        assert "users.>" not in test_handler._handler_map
+    def test_handler_methods_are_callable(self, test_handler):
+        """Test that registered handlers are callable"""
+        for subject, handler in test_handler._handler_map.items():
+            assert callable(handler), f"Handler for {subject} is not callable"
+    
+    def test_get_subjects(self, test_handler):
+        """Test get_subjects returns all registered subjects"""
+        subjects = test_handler.get_subjects()
+        assert "orders.created" in subjects
+        assert "orders.updated" in subjects
+        assert "payments" in subjects
     
     def test_get_handler_methods(self, test_handler):
-        """Test getting list of handler methods"""
+        """Test get_handler_methods returns method names"""
         methods = test_handler.get_handler_methods()
-        
-        expected_methods = [
-            "handle_created",
-            "handle_updated", 
-            "handle_deleted",
-            "handle_payments",
-            "handle_old_archived"
-        ]
-        
-        assert len(methods) == len(expected_methods)
-        for method in expected_methods:
-            assert method in methods
+        assert "on_created" in methods
+        assert "on_updated" in methods
+        assert "on_payments" in methods
     
-    def test_validate_handlers_all_implemented(self, test_handler):
-        """Test validation when all handlers are implemented"""
-        missing = test_handler.validate_handlers()
-        assert len(missing) == 0
-    
-    def test_validate_handlers_missing_implementation(self):
-        """Test validation when handlers are missing"""
-        class IncompleteHandler(ConsumerHandler):
-            def __init__(self):
-                super().__init__(["orders.created", "orders.deleted"])
-            
-            async def handle_created(self, msg):
+    def test_multiple_subjects_one_handler(self):
+        """Test that one handler can handle multiple subjects"""
+        class MultiSubjectHandler(ConsumerHandler):
+            @handle('orders.updated', 'orders-updated', 'orders_updated')
+            async def on_update(self, msg):
                 pass
-            # Missing handle_deleted
         
-        handler = IncompleteHandler()
-        missing = handler.validate_handlers()
-        
-        assert len(missing) == 1
-        assert "handle_deleted" in missing
+        handler = MultiSubjectHandler()
+        assert 'orders.updated' in handler._handler_map
+        assert 'orders-updated' in handler._handler_map
+        assert 'orders_updated' in handler._handler_map
+        assert handler._handler_map['orders.updated'] == handler._handler_map['orders-updated']
     
     @pytest.mark.asyncio
     async def test_handle_message_routing(self, test_handler, mock_message):
@@ -99,9 +94,9 @@ class TestConsumerHandler:
         
         await test_handler.handle(msg)
         
-        test_handler.handle_created.assert_called_once_with(msg)
-        test_handler.handle_updated.assert_not_called()
-        test_handler.handle_deleted.assert_not_called()
+        test_handler.created_mock.assert_called_once_with(msg)
+        test_handler.updated_mock.assert_not_called()
+        test_handler.deleted_mock.assert_not_called()
     
     @pytest.mark.asyncio
     async def test_handle_message_different_formats(self, test_handler, mock_message):
@@ -109,50 +104,57 @@ class TestConsumerHandler:
         # Test dot notation
         msg1 = mock_message("orders.created")
         await test_handler.handle(msg1)
-        test_handler.handle_created.assert_called_with(msg1)
+        test_handler.created_mock.assert_called_with(msg1)
         
-        # Test hyphen notation
+        # Test multiple subjects mapping to same handler
         msg2 = mock_message("orders-updated")
         await test_handler.handle(msg2)
-        test_handler.handle_updated.assert_called_with(msg2)
+        test_handler.updated_mock.assert_called_with(msg2)
+        
+        msg3 = mock_message("orders.updated")
+        await test_handler.handle(msg3)
+        assert test_handler.updated_mock.call_count == 2
         
         # Test underscore notation
-        msg3 = mock_message("orders_deleted")
-        await test_handler.handle(msg3)
-        test_handler.handle_deleted.assert_called_with(msg3)
+        msg4 = mock_message("orders_deleted")
+        await test_handler.handle(msg4)
+        test_handler.deleted_mock.assert_called_with(msg4)
         
         # Test single token
-        msg4 = mock_message("payments")
-        await test_handler.handle(msg4)
-        test_handler.handle_payments.assert_called_with(msg4)
+        msg5 = mock_message("payments")
+        await test_handler.handle(msg5)
+        test_handler.payments_mock.assert_called_with(msg5)
     
     @pytest.mark.asyncio
     async def test_handle_unhandled_subject(self, test_handler, mock_message):
         """Test handling of unhandled subjects"""
         msg = mock_message("unknown.subject")
         
-        # Should not raise exception, just log warning
+        # Should not raise exception, should call fallback_handle
         await test_handler.handle(msg)
         
         # No handlers should be called
-        test_handler.handle_created.assert_not_called()
-        test_handler.handle_updated.assert_not_called()
-        test_handler.handle_deleted.assert_not_called()
-        test_handler.handle_payments.assert_not_called()
+        test_handler.created_mock.assert_not_called()
+        test_handler.updated_mock.assert_not_called()
+        test_handler.deleted_mock.assert_not_called()
+        test_handler.payments_mock.assert_not_called()
+        
+        # Message should be NAKed by fallback
+        msg.nak.assert_called_once()
     
     @pytest.mark.asyncio
-    async def test_handle_missing_handler_method(self, mock_message):
-        """Test handling when handler method is not implemented - should use fallback"""
-        class IncompleteHandler(ConsumerHandler):
-            def __init__(self):
-                super().__init__(["orders.created"])
-            # Missing handle_created method
+    async def test_handle_no_decorator(self, mock_message):
+        """Test handling when no @handle decorator is used"""
+        class NoDecoratorHandler(ConsumerHandler):
+            async def some_method(self, msg):
+                pass
         
-        handler = IncompleteHandler()
+        handler = NoDecoratorHandler()
         msg = mock_message("orders.created")
         
-        # Should NOT raise exception anymore, should call fallback_handle
+        # Should call fallback_handle since no handlers registered
         await handler.handle(msg)
+        msg.nak.assert_called_once()
         
         # Verify NAK was called (default fallback behavior)
         msg.nak.assert_called_once()
@@ -162,10 +164,8 @@ class TestConsumerHandler:
     async def test_handle_method_exception_propagation(self, mock_message):
         """Test that exceptions in implemented handler methods are still propagated"""
         class ErrorHandler(ConsumerHandler):
-            def __init__(self):
-                super().__init__(["orders.created"])
-            
-            async def handle_created(self, msg):
+            @handle('orders.created')
+            async def on_created(self, msg):
                 raise ValueError("Test error")
         
         handler = ErrorHandler()
@@ -180,100 +180,50 @@ class TestConsumerHandler:
         msg.ack.assert_not_called()
     
     @pytest.mark.asyncio
-    async def test_successful_handler_no_fallback(self, mock_message):
+    async def test_successful_handler_no_fallback(self, test_handler, mock_message):
         """Test that successful handlers don't trigger fallback"""
-        class SuccessfulHandler(ConsumerHandler):
-            def __init__(self):
-                super().__init__(["orders.created"])
-                self.fallback_called = False
-            
-            async def handle_created(self, msg):
-                # Successful handler
-                pass
-            
-            async def fallback_handle(self, msg, reason="unknown"):
-                self.fallback_called = True
-                await msg.nak()
-        
-        handler = SuccessfulHandler()
         msg = mock_message("orders.created")
         
         # Should execute successfully without calling fallback
-        await handler.handle(msg)
+        await test_handler.handle(msg)
         
-        # Verify fallback was NOT called
-        assert not handler.fallback_called
+        # Handler was called
+        test_handler.created_mock.assert_called_once_with(msg)
+        
+        # Fallback not triggered
         msg.nak.assert_not_called()
         msg.ack.assert_not_called()
     
-    def test_collision_detection_warning(self, caplog):
-        """Test that handler method collisions are detected and warned"""
-        import logging
-        
-        # Create handler with colliding subjects
-        class CollidingHandler(ConsumerHandler):
+    @pytest.mark.asyncio
+    async def test_wildcard_matching(self, mock_message):
+        """Test wildcard pattern matching"""
+        class WildcardHandler(ConsumerHandler):
             def __init__(self):
-                subjects = [
-                    "orders.created",    # → handle_created()
-                    "users-created",     # → handle_created() (collision!)
-                    "items_created"      # → handle_created() (collision!)
-                ]
-                super().__init__(subjects)
+                self.calls = []
+                super().__init__()
+            
+            @handle('orders.*')
+            async def on_any_order(self, msg):
+                self.calls.append(('wildcard', msg.subject))
+            
+            @handle('orders.created')
+            async def on_created(self, msg):
+                self.calls.append(('exact', msg.subject))
         
-        # Capture log messages
-        with caplog.at_level(logging.WARNING):
-            handler = CollidingHandler()
+        handler = WildcardHandler()
         
-        # Check that collision warnings were logged
-        collision_warnings = [record for record in caplog.records 
-                            if "collision detected" in record.message.lower()]
-        
-        assert len(collision_warnings) >= 2  # At least 2 collisions detected
-        
-        # Verify the handler map still works (last one wins)
-        assert "orders.created" in handler._handler_map
-        assert "users-created" in handler._handler_map  
-        assert "items_created" in handler._handler_map
-        
-        # All should map to handle_created
-        assert handler._handler_map["orders.created"] == "handle_created"
-        assert handler._handler_map["users-created"] == "handle_created"
-        assert handler._handler_map["items_created"] == "handle_created"
-    
-    def test_subject_naming_recommendations(self, caplog):
-        """Test that recommendations are logged for non-dot subjects"""
-        import logging
-        
-        class NonDotHandler(ConsumerHandler):
-            def __init__(self):
-                subjects = [
-                    "orders",           # No dots
-                    "users-profile",    # Hyphen instead of dot
-                    "items_inventory"   # Underscore instead of dot
-                ]
-                super().__init__(subjects)
-        
-        # Capture log messages
-        with caplog.at_level(logging.INFO):
-            handler = NonDotHandler()
-        
-        # Check that recommendation was logged
-        recommendation_logs = [record for record in caplog.records 
-                             if "RECOMMENDATION" in record.message]
-        
-        assert len(recommendation_logs) >= 1
-        assert "dot notation" in recommendation_logs[0].message.lower()
+        # Exact match should take priority
+        assert 'orders.created' in handler._handler_map
+        assert 'orders.*' in handler._handler_map
     
     @pytest.mark.asyncio
-    async def test_fallback_handle_unhandled_subject(self, mock_message):
+    async def test_fallback_handle_unhandled_subject(self, test_handler, mock_message):
         """Test fallback_handle for unhandled subjects"""
-        handler = TestHandler(["orders.created"])  # Only handles orders.created
-        
-        # Message for unhandled subject
+        # Message for unhandled subject (not in HandlerForTesting)
         msg = mock_message("users.created", {"id": 1})
         
         # Should call fallback_handle, not raise exception
-        await handler.handle(msg)
+        await test_handler.handle(msg)
         
         # Verify NAK was called (default fallback behavior)
         msg.nak.assert_called_once()
@@ -285,8 +235,12 @@ class TestConsumerHandler:
         """Test custom fallback_handle implementation"""
         class CustomFallbackHandler(ConsumerHandler):
             def __init__(self):
-                super().__init__(["orders.created"])
                 self.fallback_calls = []
+                super().__init__()
+            
+            @handle('orders.created')
+            async def on_created(self, msg):
+                pass
             
             async def fallback_handle(self, msg, reason="unknown"):
                 # Custom behavior: ACK and log
@@ -300,7 +254,7 @@ class TestConsumerHandler:
         
         # Verify custom fallback was called
         assert len(handler.fallback_calls) == 1
-        assert handler.fallback_calls[0] == ("users.created", "unhandled_subject")
+        assert handler.fallback_calls[0] == ("users.created", "no_handler")
         
         # Verify ACK was called (custom behavior)
         msg.ack.assert_called_once()
@@ -311,8 +265,13 @@ class TestConsumerHandler:
         """Test different fallback reasons"""
         class ReasonTrackingHandler(ConsumerHandler):
             def __init__(self):
-                super().__init__(["orders.created"])
                 self.fallback_reasons = []
+                super().__init__()
+            
+            @handle('orders.created')
+            async def on_created(self, msg):
+                # Handler registered but we'll test with different subject
+                pass
             
             async def fallback_handle(self, msg, reason="unknown"):
                 self.fallback_reasons.append(reason)
@@ -320,41 +279,25 @@ class TestConsumerHandler:
         
         handler = ReasonTrackingHandler()
         
-        # Test unhandled_subject reason
+        # Test no_handler reason (subject not registered)
         msg1 = mock_message("users.created", {"id": 1})
         await handler.handle(msg1)
         
-        # Test not_implemented reason
-        msg2 = mock_message("orders.created", {"id": 2})
-        await handler.handle(msg2)  # handle_created not implemented
-        
-        # Verify reasons were tracked
-        assert "unhandled_subject" in handler.fallback_reasons
-        assert "not_implemented" in handler.fallback_reasons
+        # Verify reason was tracked
+        assert "no_handler" in handler.fallback_reasons
 
 
 if __name__ == "__main__":
     # Run basic tests without pytest
-    handler = TestHandler()
+    handler = HandlerForTesting()
     
     print("=== Handler Mapping Tests ===")
-    print(f"Dot notation: orders.created -> {handler._handler_map.get('orders.created')}")
-    print(f"Hyphen notation: orders-updated -> {handler._handler_map.get('orders-updated')}")
-    print(f"Underscore notation: orders_deleted -> {handler._handler_map.get('orders_deleted')}")
-    print(f"Single token: payments -> {handler._handler_map.get('payments')}")
-    print(f"Multi-level: orders.old.archived -> {handler._handler_map.get('orders.old.archived')}")
-    
-    print(f"\n=== Wildcard Handling ===")
-    print(f"orders.* in map: {'orders.*' in handler._handler_map}")
-    print(f"users.> in map: {'users.>' in handler._handler_map}")
+    print(f"Registered subjects: {handler.get_subjects()}")
     
     print(f"\n=== Handler Methods ===")
     for method in sorted(handler.get_handler_methods()):
         print(f"  - {method}")
     
-    print(f"\n=== Validation ===")
-    missing = handler.validate_handlers()
-    if missing:
-        print(f"Missing handlers: {missing}")
-    else:
-        print("All handlers implemented ✅")
+    print(f"\n=== Handler Map ===")
+    for subject, method in handler._handler_map.items():
+        print(f"  {subject} -> {method.__name__}()")

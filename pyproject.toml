@@ -1,6 +1,6 @@
 [project]
 name = "oxnats"
-version = "1.0.0"
+version = "2.0.0"
 description = "Django NATS Consumer"
 authors = []
 requires-python = ">=3.9"
@@ -34,7 +34,7 @@ dependencies = [
 
 [project.optional-dependencies]
 uvloop = ["uvloop>=0.21.0"]
-dev = ["watchfiles>=1.0.4"]
+dev = ["watchfiles>=1.0.4; python_version < '3.14'"]
 
 [project.urls]
 Homepage = "https://github.com/dev360/django-nats-consumer"
@@ -46,10 +46,9 @@ test = [
     "pytest-django~=4.9",
     "pytest-asyncio>=0.21,<0.22",
     "tox~=4.21",
-    "uvloop>=0.21.0",
 ]
 dev = [
-    "watchfiles>=1.0.4,<2",
+    "watchfiles>=1.0.4,<2; python_version < '3.14'",
 ]
 
 [tool.uv]
@@ -130,9 +129,9 @@ upload_to_vcs_release = false
 addopts = """\
     --strict-config
     --strict-markers
-    --ds=example.settings
+    --ds=tests.server.example.settings
     """
-pythonpath = "tests/server"
+pythonpath = "."
 django_find_project = false
 markers = ["asyncio: mark test as async/await test"]
 

@@ -1,7 +1,6 @@
 import asyncio
 import importlib
 import logging
-import logging.config
 import os
 import sys
 import threading
@@ -12,10 +11,9 @@ from django.core.management.base import BaseCommand
 from nats_consumer.consumer import NatsConsumer
 from nats_consumer.settings import config
 
-if settings.DEBUG:
-    from watchfiles import watch
 
 logger = logging.getLogger(__name__)
+
 
 
 def set_event_loop_policy():
@@ -55,7 +53,11 @@ class Command(BaseCommand):
         set_event_loop_policy()
         reload = options.get("reload")
         if settings.DEBUG and reload:
-            self.start_reloader()
+            try:
+                from watchfiles import watch
+                self.start_reloader()
+            except ImportError:
+                logger.warning("watchfiles not installed, reload will not work in DEBUG mode")
         elif not settings.DEBUG and reload:
             logger.warning("Reload is not supported when DEBUG is false")
             return
@@ -70,6 +72,8 @@ class Command(BaseCommand):
         asyncio.run(self._handle(*args, **options))
 
     def start_reloader(self):
+        from watchfiles import watch
+        
         self.stop_event = threading.Event()
 
         def watch_files():

@@ -2,45 +2,40 @@ import json
 import logging
 from nats_consumer import JetstreamPullConsumer, JetstreamPushConsumer, operations
 from nats_consumer.operations import api
-from nats_consumer.handler import ConsumerHandler
+from nats_consumer import ConsumerHandler, handle
 
 logger = logging.getLogger(__name__)
 
 
 class ExampleHandler(ConsumerHandler):
-    """Example handler for testing different subject formats"""
+    """Example handler using @handle decorator"""
     
-    def __init__(self):
-        subjects = [
-            "example.created",      # Dot notation
-            "example-updated",      # Hyphen notation  
-            "example_deleted",      # Underscore notation
-            "notifications",        # Single token
-            "example.old.archived", # Multi-level
-        ]
-        super().__init__(subjects)
-
-    async def handle_created(self, msg):
+    @handle('example.created')
+    async def on_created(self, msg):
         """Handle example.created messages"""
         data = json.loads(msg.data.decode())
         logger.info(f"Created: {data}")
 
-    async def handle_updated(self, msg):
-        """Handle example-updated messages"""
+    @handle('example.updated', 'example-updated')
+    async def on_updated(self, msg):
+        """Handle example.updated and example-updated messages"""
         data = json.loads(msg.data.decode())
         logger.info(f"Updated: {data}")
 
-    async def handle_deleted(self, msg):
-        """Handle example_deleted messages"""
+    @handle('example.deleted', 'example_deleted')
+    async def on_deleted(self, msg):
+        """Handle example.deleted and example_deleted messages"""
         data = json.loads(msg.data.decode())
         logger.info(f"Deleted: {data}")
 
-    async def handle_notifications(self, msg):
+    @handle('notifications')
+    async def on_notification(self, msg):
         """Handle notifications messages"""
         data = json.loads(msg.data.decode())
         logger.info(f"Notification: {data}")
 
-    async def handle_old_archived(self, msg):
+    @handle('example.old.archived')
+    async def on_archived(self, msg):
         """Handle example.old.archived messages"""
         data = json.loads(msg.data.decode())
         logger.info(f"Archived: {data}")
@@ -50,7 +45,9 @@ class ExamplePullConsumer(JetstreamPullConsumer):
     stream_name = "example_pull"
     subjects = [
         "example.created",
+        "example.updated",
         "example-updated", 
+        "example.deleted",
         "example_deleted",
         "notifications",
         "example.old.archived"
@@ -62,13 +59,13 @@ class ExamplePullConsumer(JetstreamPullConsumer):
         super().__init__(*args, **kwargs)
         self.handler = ExampleHandler()
 
-    def setup(self):
+    async def setup(self):
         return [
             operations.CreateStream(
                 name=self.stream_name,
                 subjects=self.subjects,
-                retention=api.RetentionPolicy.LIMITED_TIME,
-                max_age=1000,
+                retention=api.RetentionPolicy.LIMITS,
+                max_age=3600,  # seconds
             )
         ]
 
@@ -99,13 +96,13 @@ class ExamplePushConsumer(JetstreamPushConsumer):
         super().__init__(*args, **kwargs)
         self.handler = ExampleHandler()
 
-    def setup(self):
+    async def setup(self):
         return [
             operations.CreateStream(
                 name=self.stream_name,
                 subjects=self.subjects,
-                retention=api.RetentionPolicy.LIMITED_TIME,
-                max_age=1000,
+                retention=api.RetentionPolicy.LIMITS,
+                max_age=3600,  # seconds
             )
         ]
 
@@ -123,13 +120,13 @@ class LegacyConsumer(JetstreamPushConsumer):
     stream_name = "legacy"
     subjects = ["legacy.test"]
 
-    def setup(self):
+    async def setup(self):
         return [
             operations.CreateStream(
                 name=self.stream_name,
                 subjects=self.subjects,
-                retention=api.RetentionPolicy.LIMITED_TIME,
-                max_age=1000,
+                retention=api.RetentionPolicy.LIMITS,
+                max_age=3600,  # seconds
             )
         ]
 
